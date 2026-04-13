@@ -1,0 +1,6 @@
+{
+  "name": "RescueTab AI",
+  "description": "Ein KI-gestütztes Rettungsdienst-Tablet zur Erfassung von Einsatzdaten und automatischen Generierung von Übergabeprotokollen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
