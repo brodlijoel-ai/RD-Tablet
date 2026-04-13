@@ -101,23 +101,51 @@ const initialData: IncidentData = {
 };
 
 export default function RescueTab() {
-  const [session, setSession] = React.useState<UserSession | null>(null);
+  const [session, setSession] = React.useState<UserSession | null>(() => {
+    const saved = localStorage.getItem("rescue_session");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [loginForm, setLoginForm] = React.useState<UserSession>({
     name: "",
     vehicle: "",
     qualification: "Rettungssanitäter",
     additionalQualification: "Keine"
   });
-  const [data, setData] = React.useState<IncidentData>(initialData);
+  const [data, setData] = React.useState<IncidentData>(() => {
+    const saved = localStorage.getItem("rescue_incident_data");
+    return saved ? JSON.parse(saved) : initialData;
+  });
+
   const [protocol, setProtocol] = React.useState<HandoverProtocol | null>(null);
+  const [protocolHistory, setProtocolHistory] = React.useState<HandoverProtocol[]>(() => {
+    const saved = localStorage.getItem("rescue_protocol_history");
+    return saved ? JSON.parse(saved) : [];
+  });
   const [measures, setMeasures] = React.useState<string | null>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [isMeasuresLoading, setIsMeasuresLoading] = React.useState(false);
   const [useAi, setUseAi] = React.useState(true);
-  const [activeTab, setActiveTab] = React.useState<"incident" | "protocol" | "ai" | "measures">("incident");
+  const [activeTab, setActiveTab] = React.useState<"incident" | "protocol" | "ai" | "measures" | "history">("incident");
   const [chatQuery, setChatQuery] = React.useState("");
   const [chatHistory, setChatHistory] = React.useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = React.useState(false);
+
+  // Persistence Effects
+  React.useEffect(() => {
+    if (session) {
+      localStorage.setItem("rescue_session", JSON.stringify(session));
+    } else {
+      localStorage.removeItem("rescue_session");
+    }
+  }, [session]);
+
+  React.useEffect(() => {
+    localStorage.setItem("rescue_incident_data", JSON.stringify(data));
+  }, [data]);
+
+  React.useEffect(() => {
+    localStorage.setItem("rescue_protocol_history", JSON.stringify(protocolHistory));
+  }, [protocolHistory]);
 
   const handleInputChange = (field: keyof IncidentData, value: string) => {
     setData(prev => ({ ...prev, [field]: value }));
@@ -175,6 +203,23 @@ export default function RescueTab() {
     }
   };
 
+  const handleLogout = () => {
+    setSession(null);
+    setData(initialData);
+    setProtocol(null);
+    setMeasures(null);
+    setChatHistory([]);
+  };
+
+  const handleResetMission = () => {
+    if (window.confirm("Möchten Sie alle aktuellen Patientendaten löschen und einen neuen Einsatz beginnen?")) {
+      setData(initialData);
+      setProtocol(null);
+      setMeasures(null);
+      setChatHistory([]);
+    }
+  };
+
   const handleGenerateProtocol = async () => {
     setIsGenerating(true);
     setActiveTab("protocol");
@@ -195,12 +240,15 @@ export default function RescueTab() {
         `Medikamente: ${data.medicationsAdministered}`;
     }
 
-    setProtocol({
+    const newProtocol: HandoverProtocol = {
       id: Math.random().toString(36).substr(2, 9),
       timestamp: new Date().toISOString(),
       content,
       isAiGenerated: useAi
-    });
+    };
+
+    setProtocol(newProtocol);
+    setProtocolHistory(prev => [newProtocol, ...prev].slice(0, 10)); // Keep last 10
     setIsGenerating(false);
   };
 
@@ -371,26 +419,46 @@ export default function RescueTab() {
               label="Übergabe"
             />
             <NavButton 
+              active={activeTab === "history"} 
+              onClick={() => setActiveTab("history")}
+              icon={<History className="w-5 h-5" />}
+              label="Historie"
+            />
+            <NavButton 
               active={activeTab === "ai"} 
               onClick={() => setActiveTab("ai")}
               icon={<BrainCircuit className="w-5 h-5" />}
               label="KI-Assistent"
             />
           </div>
-          <div className="p-4 border-t border-slate-100">
-            <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3">
+          <div className="p-4 border-t border-slate-100 space-y-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full justify-start text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+              onClick={handleResetMission}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Einsatz zurücksetzen
+            </Button>
+            <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3 relative group/user">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                 <User className="w-6 h-6 text-blue-600" />
               </div>
-              <div className="hidden md:block overflow-hidden">
+              <div className="hidden md:block overflow-hidden flex-1">
                 <p className="text-sm font-bold truncate">{session.name}</p>
                 <div className="flex items-center gap-1">
                   <Badge variant="outline" className="text-[9px] px-1 py-0 bg-white">{session.qualification}</Badge>
-                  {session.additionalQualification !== "Keine" && (
-                    <Badge variant="outline" className="text-[9px] px-1 py-0 bg-blue-50 text-blue-600 border-blue-200">{session.additionalQualification}</Badge>
-                  )}
                 </div>
               </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 text-slate-400 hover:text-red-600"
+                onClick={handleLogout}
+              >
+                <LogIn className="w-4 h-4 rotate-180" />
+              </Button>
             </div>
           </div>
         </nav>
@@ -903,6 +971,53 @@ export default function RescueTab() {
                       </form>
                     </div>
                   </Card>
+                </motion.div>
+              )}
+              {activeTab === "history" && (
+                <motion.div
+                  key="history"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="space-y-6"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold">Protokoll-Historie</h2>
+                      <p className="text-slate-500">Die letzten 10 generierten Übergabeprotokolle.</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setProtocolHistory([])}>Historie löschen</Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {protocolHistory.length === 0 ? (
+                      <Card className="p-12 text-center border-dashed border-2">
+                        <History className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                        <p className="text-slate-500">Noch keine Protokolle in der Historie.</p>
+                      </Card>
+                    ) : (
+                      protocolHistory.map((p) => (
+                        <Card key={p.id} className="shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden border-slate-200" onClick={() => {
+                          setProtocol(p);
+                          setActiveTab("protocol");
+                        }}>
+                          <div className="bg-slate-900 px-4 py-2 flex items-center justify-between">
+                            <Badge variant="secondary" className="text-[10px] bg-blue-500/20 text-blue-300 border-blue-500/30">
+                              {p.isAiGenerated ? "KI" : "Manuell"}
+                            </Badge>
+                            <span className="text-slate-400 text-[10px] font-mono">
+                              {new Date(p.timestamp).toLocaleString('de-DE')}
+                            </span>
+                          </div>
+                          <CardContent className="p-4">
+                            <p className="text-sm text-slate-600 line-clamp-3 font-serif italic">
+                              {p.content}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
